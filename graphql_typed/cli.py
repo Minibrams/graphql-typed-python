@@ -7,6 +7,7 @@ from graphql_typed.generator import generate
 
 
 def main() -> None:
+    """Run the CLI, for example ``graphql-typed generate schema.graphql --out generated``."""
     parser = argparse.ArgumentParser(prog="graphql-typed")
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser(

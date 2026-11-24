@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,27 @@ type Device { serial: String }
 type Site { address: String }
 union Hit = Device | Site
 """
+
+
+def test_generated_docstring_examples(devices: Path):
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+from generated.client import Async_DeviceBySerial, Sync_Version
+from generated.schema import DeviceFields
+from generated.types import VersionData
+
+assert "await client.query('DeviceBySerial')(variables=variables)" in Async_DeviceBySerial.__call__.__doc__
+assert "client.query('Version')()" in Sync_Version.__call__.__doc__
+assert 'fields: DeviceFields = {"__typename": True}' in DeviceFields.__doc__
+assert "row['release']" in VersionData.__doc__
+""",
+        ],
+        cwd=devices,
+        check=True,
+    )
 
 
 @pytest.mark.parametrize(

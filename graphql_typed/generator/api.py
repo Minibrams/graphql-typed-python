@@ -20,7 +20,11 @@ def generate(
     operations: str | None = None,
     verify_ssl: bool = True,
 ) -> None:
-    """Generate a schema module and, when supplied a factory, its typed clients."""
+    """Generate a Python package from SDL, introspection JSON, or an endpoint URL.
+
+    Use ``generate("schema.graphql", "generated")`` to start writing selections.
+    Add ``operations="operations:operations"`` to generate clients for that factory.
+    """
     output = Path(out).resolve()
     if not output.name.isidentifier() or keyword.iskeyword(output.name):
         raise ValueError(f"Output directory must name a Python package: {output}")

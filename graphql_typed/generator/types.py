@@ -36,12 +36,17 @@ class Names:
         return name
 
 
-def dictionary(name: str, items: Iterable[tuple[str, str, bool]]) -> str:
+def dictionary(name: str, items: Iterable[tuple[str, str, bool]], doc: str) -> str:
     lines = []
     for key, annotation, required in items:
         item = repr(annotation) if required else f"t.NotRequired[{annotation!r}]"
         lines.append(f"    {key!r}: {item},")
-    return f"{name} = t.TypedDict({name!r}, {{\n" + "\n".join(lines) + "\n})"
+    # Editors read the adjacent string. Python's help() reads the class attribute.
+    return (
+        f"{name} = t.TypedDict({name!r}, {{\n"
+        + "\n".join(lines)
+        + f'\n}})\n"""{doc}"""\n{name}.__doc__ = {doc!r}'
+    )
 
 
 def annotation(
@@ -84,7 +89,13 @@ class Inputs:
         ]
         self.names = {obj.name: names.take(f"{obj.name}Input") for obj in objects}
         self.definitions = [
-            dictionary(self.names[obj.name], self.items(obj.fields)) for obj in objects
+            dictionary(
+                self.names[obj.name],
+                self.items(obj.fields),
+                f"GraphQL input fields for {obj.name}. "
+                f"Type a reusable builder as ``def make_input() -> {self.names[obj.name]}: ...``.",
+            )
+            for obj in objects
         ]
 
     def type(self, type_: GraphQLType) -> str:
@@ -119,7 +130,13 @@ def render_schema(schema: GraphQLSchema) -> str:
         *inputs.definitions,
     ]
     leaf_selection = names.take("LeafSelection")
-    definitions.append(dictionary(leaf_selection, [("alias", "str", False)]))
+    definitions.append(
+        dictionary(
+            leaf_selection,
+            [("alias", "str", False)],
+            'Rename a leaf field in the result, as in ``{"__typename": {"alias": "kind"}}``.',
+        )
+    )
     leaf = f"t.Literal[True] | {leaf_selection}"
     leaves = f"{leaf} | list[{leaf}]"
     for obj in objects:
@@ -141,18 +158,37 @@ def render_schema(schema: GraphQLSchema) -> str:
             if field.args:
                 args = names.take(f"{obj.name}_{key}Args")
                 members = list(inputs.items(field.args))
-                definitions.append(dictionary(args, members))
+                definitions.append(
+                    dictionary(
+                        args,
+                        members,
+                        f"Arguments for {obj.name}.{key}. Supply them as ``selection['args'] = args``.",
+                    )
+                )
                 required_args = any(required for _, _, required in members)
                 options.append(("args", args, required_args))
             if target.name in fields:
                 options.append(("select", fields[target.name], True))
             selection = names.take(f"{obj.name}_{key}Selection")
-            definitions.append(dictionary(selection, options))
+            definitions.append(
+                dictionary(
+                    selection,
+                    options,
+                    f"Options for selecting {obj.name}.{key}. Use ``fields[{key!r}] = selection``.",
+                )
+            )
             single = selection
             if not required_args and target.name not in fields:
                 single = f"t.Literal[True] | {single}"
             items.append((key, f"{single} | list[{single}]", False))
-        definitions.append(dictionary(fields[obj.name], items))
+        definitions.append(
+            dictionary(
+                fields[obj.name],
+                items,
+                f"Select fields of {obj.name}, for example "
+                f'``fields: {fields[obj.name]} = {{"__typename": True}}``.',
+            )
+        )
 
     for kind, root in [
         ("query", schema.query_type),
@@ -161,6 +197,8 @@ def render_schema(schema: GraphQLSchema) -> str:
         if root:
             definitions.append(
                 f"def {kind}(name: str, *, select: {fields[root.name]}) -> Operation:\n"
+                f'    """Define a named {kind} in an operation factory.\n\n'
+                f'    For example, ``schema.{kind}("RootType", select={{"__typename": True}})``.\n    """\n'
                 f"    return Operation({kind!r}, name, select)"
             )
     return "\n\n".join(definitions) + "\n"

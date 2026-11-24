@@ -69,9 +69,19 @@ def response(
                     leaf = scalar(target, input_=False)
                 item_type = annotation(field_type, leaf)
             items.append((key, item_type, True))
-        definitions.append(dictionary(variant, items))
+        example = f"row[{items[0][0]!r}]" if items else "dict(row)"
+        definitions.append(
+            dictionary(
+                variant,
+                items,
+                f"Selected response fields for {obj.name}. For example, ``{example}``.",
+            )
+        )
     if abstract:
-        definitions.append(f"{name} = {' | '.join(variants) or 't.Never'}")
+        definitions.append(
+            f"{name} = {' | '.join(variants) or 't.Never'}\n"
+            f'"""Possible {parent.name} results. Type a handler as ``def handle(row: {name}): ...``."""'
+        )
 
 
 def render_client(
@@ -106,20 +116,36 @@ def render_client(
                 (k, inputs.type(v), isinstance(v, GraphQLNonNull))
                 for k, v in doc.variables.items()
             ]
-            types.append(dictionary(variables, fields))
+            types.append(
+                dictionary(
+                    variables,
+                    fields,
+                    f"Variables for {op.name}. Pass them with "
+                    f"``client.{op.kind}({op.name!r})(variables=variables)``.",
+                )
+            )
             default = "" if any(required for _, _, required in fields) else " = ..."
             params = f", *, variables: types.{variables}{default}"
         for prefix, modifier in [("Sync", ""), ("Async", "async ")]:
+            call = f"client.{op.kind}({op.name!r})"
+            example = ("await " if modifier else "") + call
+            example += "(variables=variables)" if doc.variables else "()"
             client.append(
                 f"class {prefix}_{op.name}(t.Protocol):\n"
-                f"    {modifier}def __call__(self{params}) -> types.{data}: ..."
+                f'    """Callable for the {op.name} {op.kind}, obtained with ``{call}``."""\n\n'
+                f"    {modifier}def __call__(self{params}) -> types.{data}:\n"
+                f'        """Return the selected data, as in ``{example}``."""\n'
+                f"        ..."
             )
 
     for kind, docs in documents.items():
         if docs:
             entries = "\n".join(f"    {key!r}: {text!r}," for key, text in docs.items())
             client.append(f"_{kind}: dict[str, str] = {{\n{entries}\n}}")
-    for prefix, class_name in [("Sync", "Client"), ("Async", "AsyncClient")]:
+    for prefix, class_name, mode in [
+        ("Sync", "Client", "synchronously"),
+        ("Async", "AsyncClient", "asynchronously"),
+    ]:
         methods = []
         for kind, docs in documents.items():
             if not docs:
@@ -128,23 +154,28 @@ def render_client(
             for name in docs:
                 protocol = f"{prefix}_{name}"
                 signature = (
-                    f"    def {kind}(self, name: t.Literal[{name!r}]) -> {protocol}:"
+                    f"    def {kind}(self, name: t.Literal[{name!r}]) -> {protocol}:\n"
+                    f'        """Bind the {name} {kind}, as in ``run = client.{kind}({name!r})``."""'
                 )
-                if len(docs) == 1:
+                if len(docs) > 1:
+                    methods.extend(["    @t.overload", signature, "        ..."])
+                else:
                     methods.extend(
                         [signature, f"        return t.cast({protocol}, {bind})"]
                     )
-                else:
-                    methods.extend(["    @t.overload", signature + " ..."])
             if len(docs) > 1:
+                first = next(iter(docs))
                 methods.extend(
                     [
                         f"    def {kind}(self, name: str) -> t.Any:",
+                        f'        """Bind a named {kind}, for example ``run = client.{kind}({first!r})``."""',
                         f"        return {bind}",
                     ]
                 )
         client.append(
             f"class {class_name}({prefix}Executor):\n"
-            + ("\n".join(methods) or "    pass")
+            f'    """Run named operations {mode} using an endpoint or a custom transport.\n\n'
+            f'    For example, ``client = {class_name}("https://example.test/graphql")``.\n    """\n'
+            + "\n".join(methods)
         )
     return "\n\n".join(types) + "\n", "\n\n".join(client) + "\n"

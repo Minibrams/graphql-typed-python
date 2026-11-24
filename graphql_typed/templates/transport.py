@@ -5,18 +5,31 @@ from typing import Any, Protocol
 
 
 class Transport(Protocol):
+    """Send requests for a sync client, for example ``Client(transport=fake)`` in a test."""
+
     def execute(
         self, *, document: str, operation_name: str, variables: Mapping[str, object]
-    ) -> object: ...
+    ) -> object:
+        """Return the decoded GraphQL envelope, for example ``{"data": {"version": "1"}}``."""
+        ...
 
 
 class AsyncTransport(Protocol):
+    """Send requests for an async client, for example ``AsyncClient(transport=session)``."""
+
     async def execute(
         self, *, document: str, operation_name: str, variables: Mapping[str, object]
-    ) -> object: ...
+    ) -> object:
+        """Return the decoded GraphQL envelope, for example ``{"data": {"version": "1"}}``."""
+        ...
 
 
 class GraphQLResponseError(Exception):
+    """Raised for a GraphQL error response, including one with partial data.
+
+    In ``except GraphQLResponseError as exc:``, inspect ``exc.errors`` and ``exc.data``.
+    """
+
     def __init__(self, errors: list[Any], data: object) -> None:
         self.errors = errors
         self.data = data
@@ -61,6 +74,7 @@ class SyncExecutor:
         document = documents[name]
 
         def run(*, variables: Mapping[str, object] | None = None):
+            """Execute the operation. Use ``run()`` or pass its variables with ``run(variables=values)``."""
             values = variables if variables is not None else {}
             if self._transport is not None:
                 response = self._transport.execute(
@@ -105,6 +119,7 @@ class AsyncExecutor:
         document = documents[name]
 
         async def run(*, variables: Mapping[str, object] | None = None):
+            """Execute the operation. Use ``await run()`` or ``await run(variables=values)``."""
             values = variables if variables is not None else {}
             if self._transport is not None:
                 response = await self._transport.execute(
