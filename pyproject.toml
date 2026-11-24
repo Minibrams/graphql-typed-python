@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "graphql-typed-python"
-version = "0.1.1"
+version = "0.1.2"
 description = "Generate typed GraphQL selections, variables, and response dictionaries for Python."
 readme = "README.md"
 license = "MIT"
