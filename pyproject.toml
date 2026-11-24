@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "graphql-typed-python"
+version = "0.1.0"
+description = "Generate typed GraphQL selections, variables, and response dictionaries for Python."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = ["graphql-core>=3.2.6,<3.3"]
+
+[project.optional-dependencies]
+httpx = ["httpx>=0.28.1"]
+
+[project.scripts]
+graphql-typed = "graphql_typed.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["graphql_typed"]
+
+[dependency-groups]
+dev = ["httpx>=0.28.1", "pytest>=8.3.5", "pytest-xdist>=3.6.1", "ruff>=0.9.10", "ty>=0.0.37", "twine>=6.1.0"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ty.src]
+exclude = [".venv/", "tests/contract/"]
+
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

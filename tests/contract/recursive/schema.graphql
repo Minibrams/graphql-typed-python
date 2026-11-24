@@ -1,0 +1,3 @@
+input Filter { and: [Filter!], class: String }
+type Query { from(where: Filter, second: String): Node! }
+type Node { class: String!, parent: Node }

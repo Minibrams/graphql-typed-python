@@ -1,0 +1,62 @@
+name: QA
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  QA:
+    name: QA checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Sync packages
+        run: uv sync --locked --all-packages
+
+      - name: Check import sorting
+        run: uv run ruff check --select I .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Type check package
+        run: uv run ty check .
+
+      - name: Contract tests
+        run: uv run pytest -n auto
+
+  benchmark:
+    name: Compare generation time and size
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .benchmark/base
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - run: uv sync --locked
+      - name: Benchmark both generation passes
+        run: |
+          if test -f .benchmark/base/graphql_typed/cli.py; then
+            uv run python scripts/benchmark_generate.py --base .benchmark/base
+          else
+            uv run python scripts/benchmark_generate.py
+          fi

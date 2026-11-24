@@ -1,0 +1,11 @@
+scalar VendorSerial
+enum Mode { ONLINE OFFLINE }
+input Patch {
+  mode: Mode!
+  labels: [String!]!
+  serial: VendorSerial
+  retries: Int! = 2
+}
+type Device { mode: Mode!, serial: VendorSerial }
+type Query { lookup(mode: Mode): [Device]! }
+type Mutation { update(id: ID!, patch: Patch!): Device! }

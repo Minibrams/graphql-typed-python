@@ -1,0 +1,11 @@
+type Query {
+  device(serial: String!): Device
+  all: [Device!]!
+  version: String!
+}
+type Device {
+  id: ID!
+  name: String!
+  firmware: String
+  ports: [[Int]!]!
+}
