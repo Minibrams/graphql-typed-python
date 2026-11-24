@@ -75,7 +75,33 @@ Construct a client with `AsyncClient("https://example.test/graphql")`. The sync 
 - Use `var("name")` at an argument, input object field, or list item. The first use determines its GraphQL type. Further uses must have exactly the same type, including nullability and list markers. Custom scalars retain their GraphQL names and use Python `Any`.
 - Input objects are dictionaries and enum values are string literals. Nullable variables can be omitted or set to `None`. A selected nullable response field has a required key whose value can be `None`.
 - Use `schema.mutation(...)` and `client.mutation("Name")(...)` for mutations. Operations without variables are called as `client.query("Name")()`.
-- V1 supports queries and mutations over concrete objects. Subscriptions, directives on selections, and type-specific selections on unions and interfaces are outside its scope.
+- Queries and mutations support object and interface results. Union results, subscriptions, and directives on selections are outside the current scope.
+
+### Interface selections
+
+Select shared fields directly. Add a key such as `"... on InterfaceVirtual"` for fields specific to a concrete implementation. The generated selection type provides completions for each fragment key and for the fields inside it.
+
+```python
+peers: schema.InterfaceFields = {
+    "name": True,
+    "__typename": True,
+    "... on InterfaceVirtual": {
+        "parent_interface": {"select": {"name": True}},
+    },
+}
+```
+
+Use `peers` as the `select` value of an interface-valued field. Given an item from that result, `ty` can narrow on the selected `__typename`:
+
+```python
+label = peer["name"]
+if peer["__typename"] == "InterfaceVirtual":
+    parent = peer["parent_interface"]
+    if parent is not None:
+        label = parent["name"]
+```
+
+The physical branch has only `name` and `__typename`. Selecting `__typename` is optional. If you alias it, use the alias for narrowing. Nested relationships retain their selected fields and schema nullability.
 
 ## Schema sources and output
 

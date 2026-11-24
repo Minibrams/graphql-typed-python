@@ -7,15 +7,16 @@ from graphql import (
     GraphQLEnumType,
     GraphQLInputField,
     GraphQLInputObjectType,
+    GraphQLInterfaceType,
     GraphQLList,
     GraphQLNamedType,
     GraphQLNonNull,
     GraphQLObjectType,
     GraphQLSchema,
     GraphQLType,
+    GraphQLUnionType,
     Undefined,
     get_named_type,
-    is_abstract_type,
 )
 
 
@@ -109,7 +110,8 @@ def render_schema(schema: GraphQLSchema) -> str:
     objects = [
         obj
         for obj in schema.type_map.values()
-        if isinstance(obj, GraphQLObjectType) and not obj.name.startswith("__")
+        if isinstance(obj, (GraphQLObjectType, GraphQLInterfaceType))
+        and not obj.name.startswith("__")
     ]
     fields = {obj.name: names.take(f"{obj.name}Fields") for obj in objects}
     definitions = [
@@ -122,11 +124,16 @@ def render_schema(schema: GraphQLSchema) -> str:
     leaves = f"{leaf} | list[{leaf}]"
     for obj in objects:
         items = [("__typename", leaves, False)]
+        if isinstance(obj, GraphQLInterfaceType):
+            items.extend(
+                (f"... on {impl.name}", fields[impl.name], False)
+                for impl in schema.get_possible_types(obj)
+            )
         for key, field in obj.fields.items():
             target = get_named_type(field.type)
-            if is_abstract_type(target):
+            if isinstance(target, GraphQLUnionType):
                 continue
-            if not field.args and not isinstance(target, GraphQLObjectType):
+            if not field.args and target.name not in fields:
                 items.append((key, leaves, False))
                 continue
             options = [("alias", "str", False)]
@@ -137,12 +144,12 @@ def render_schema(schema: GraphQLSchema) -> str:
                 definitions.append(dictionary(args, members))
                 required_args = any(required for _, _, required in members)
                 options.append(("args", args, required_args))
-            if isinstance(target, GraphQLObjectType):
+            if target.name in fields:
                 options.append(("select", fields[target.name], True))
             selection = names.take(f"{obj.name}_{key}Selection")
             definitions.append(dictionary(selection, options))
             single = selection
-            if not required_args and not isinstance(target, GraphQLObjectType):
+            if not required_args and target.name not in fields:
                 single = f"t.Literal[True] | {single}"
             items.append((key, f"{single} | list[{single}]", False))
         definitions.append(dictionary(fields[obj.name], items))

@@ -12,7 +12,15 @@ from tests.conftest import CONTRACTS, build_contract
 def test_generated_and_usage_types(tmp_path: Path, case: str):
     build_contract(tmp_path, case)
     run = subprocess.run(
-        ["ty", "check", ".", "--python-version", "3.12"],
+        [
+            "ty",
+            "check",
+            ".",
+            "--python-version",
+            "3.12",
+            "--error",
+            "unused-ignore-comment",
+        ],
         check=False,
         cwd=tmp_path,
         text=True,

@@ -2,11 +2,12 @@ import json
 from pathlib import Path
 
 import pytest
-from graphql import GraphQLError, build_schema, introspection_from_schema
+from graphql import GraphQLError, build_schema, graphql_sync, introspection_from_schema
 
 from graphql_typed import Operation, var
 from graphql_typed.generator import generate
 from graphql_typed.generator.client import render_client
+from graphql_typed.generator.operations import Document
 from tests.conftest import CONTRACTS
 
 SMALL = """
@@ -40,6 +41,56 @@ union Hit = Device | Site
 def test_invalid_operations(select, message):
     with pytest.raises((GraphQLError, ValueError), match=message):
         render_client(build_schema(SMALL), [Operation("query", "Q", select)])
+
+
+@pytest.mark.parametrize(
+    ("selection", "message"),
+    [
+        ({"parent_interface": True}, "Unknown field Interface.parent_interface"),
+        ({"... on Device": {"name": True}}, "invalid fragment condition"),
+        ({"... on Unknown": {"name": True}}, "invalid fragment condition"),
+        ({"... on InterfaceVirtual": {}}, "select at least one field"),
+    ],
+)
+def test_invalid_interface_selections(selection, message):
+    schema = build_schema((CONTRACTS / "interfaces/schema.graphql").read_text())
+    op = Operation(
+        "query", "Q", {"device": {"select": {"interfaces": {"select": selection}}}}
+    )
+    with pytest.raises(ValueError, match=message):
+        Document(schema, op)
+
+
+def test_execute_interface_fragment_without_typename():
+    schema = build_schema((CONTRACTS / "interfaces/schema.graphql").read_text())
+    fields = {
+        "name": True,
+        "... on InterfaceVirtual": {"parent_interface": {"select": {"name": True}}},
+    }
+    op = Operation(
+        "query", "Q", {"device": {"select": {"interfaces": {"select": fields}}}}
+    )
+    physical = {"__typename": "InterfacePhysical", "name": "eth0"}
+    virtual = {
+        "__typename": "InterfaceVirtual",
+        "name": "vlan5",
+        "parent_interface": physical,
+    }
+    result = graphql_sync(
+        schema,
+        Document(schema, op).text,
+        root_value={"device": {"interfaces": [physical, virtual, None]}},
+    )
+    assert result.errors is None
+    assert result.data == {
+        "device": {
+            "interfaces": [
+                {"name": "eth0"},
+                {"name": "vlan5", "parent_interface": {"name": "eth0"}},
+                None,
+            ]
+        }
+    }
 
 
 def test_unique_operations():

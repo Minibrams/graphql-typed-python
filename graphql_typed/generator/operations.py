@@ -6,6 +6,7 @@ from typing import Any
 from graphql import (
     GraphQLEnumType,
     GraphQLInputObjectType,
+    GraphQLInterfaceType,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
@@ -45,6 +46,7 @@ def literal(value: Any) -> str:
 class Document:
     def __init__(self, schema: GraphQLSchema, op: Operation):
         assert_name(op.name)
+        self.schema = schema
         self.variables: dict[str, GraphQLType] = {}
         self.locations: dict[str, str] = {}
         self.root = {"query": schema.query_type, "mutation": schema.mutation_type}[
@@ -64,7 +66,7 @@ class Document:
         self.text = print_ast(ast)
         definition = ast.definitions[0]
         assert isinstance(definition, OperationDefinitionNode)
-        self.fields = definition.selection_set.selections
+        self.selection_set = definition.selection_set
 
     def value(self, value: Any, type_: GraphQLType, path: str) -> str:
         if isinstance(value, Variable):
@@ -101,9 +103,21 @@ class Document:
             return assert_name(value)
         return literal(value)
 
-    def selection(self, parent: GraphQLObjectType, value: object) -> str:
+    def selection(
+        self, parent: GraphQLObjectType | GraphQLInterfaceType, value: object
+    ) -> str:
         parts = []
         for key, selections in object_value(value, parent.name).items():
+            if isinstance(parent, GraphQLInterfaceType) and key.startswith("... on "):
+                target = self.schema.get_type(key.removeprefix("... on "))
+                if not isinstance(
+                    target, GraphQLObjectType
+                ) or not self.schema.is_sub_type(parent, target):
+                    raise ValueError(
+                        f"{parent.name}: invalid fragment condition {key!r}"
+                    )
+                parts.append(f"{key} {self.selection(target, selections)}")
+                continue
             if selections == []:
                 raise ValueError(f"{parent.name}.{key}: empty selection list")
             for item in selections if isinstance(selections, list) else [selections]:
@@ -116,7 +130,10 @@ class Document:
         return "{ " + " ".join(parts) + " }"
 
     def field(
-        self, parent: GraphQLObjectType, key: str, options: dict[str, Any]
+        self,
+        parent: GraphQLObjectType | GraphQLInterfaceType,
+        key: str,
+        options: dict[str, Any],
     ) -> str:
         path = f"{parent.name}.{key}"
         if extra := options.keys() - {"alias", "args", "select"}:
@@ -135,7 +152,7 @@ class Document:
             args.append(f"{name}: {self.value(value, arg.type, f'{path}({name})')}")
         call = "(" + ", ".join(args) + ")" if args else ""
         target = get_named_type(field.type)
-        if isinstance(target, GraphQLObjectType):
+        if isinstance(target, (GraphQLObjectType, GraphQLInterfaceType)):
             child = " " + self.selection(target, options.get("select"))
         elif is_leaf_type(target):
             if "select" in options:
